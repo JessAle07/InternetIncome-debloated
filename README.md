@@ -127,6 +127,11 @@ sudo bash internetIncome.sh --delete
 
 # Delete everything including backups
 sudo bash internetIncome.sh --deleteBackup
+
+#restart containers starting with set name 
+# example 
+sudo bash restart.sh --restart container_prefix/earnapp/wizardgain/etc
+
 ```
 
 ---
