@@ -60,8 +60,6 @@ sudo bash internetIncome.sh --start
 - ProxyBase
 - Proxylite
 - EarnFM
-- Gaganode
-- Titan Network
 - URnetwork
 - Wipter
 - Antgain
