@@ -190,9 +190,9 @@ execute_docker_command() {
   
   echo -e "${GREEN}Starting $app_name container..${NOCOLOUR}"
   if [[ "$app_name" == "VPN" ]]; then
-    CONTAINER_ID=$(eval "sudo docker run $DOCKER_INIT -d --name $container_name --restart=always ${container_parameters[@]:2}")
+    CONTAINER_ID=$(eval "sudo docker run $DOCKER_INIT -d --name $container_name $RESTART_POLICY ${container_parameters[@]:2}")
   else
-    CONTAINER_ID=$(sudo docker run $DOCKER_INIT -d $WATCH_TOWER_LABEL --name $container_name --restart=always "${container_parameters[@]:2}")
+    CONTAINER_ID=$(sudo docker run $DOCKER_INIT -d $WATCH_TOWER_LABEL --name $container_name $RESTART_POLICY "${container_parameters[@]:2}")
   fi
 
   # Check if the container started successfully
@@ -886,7 +886,7 @@ start_containers() {
       printf "$date_time https://earnapp.com/r/%s\n" "$uuid" | tee -a $earnapp_file
     fi
 
-    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME --restart=always $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp -e EARNAPP_UUID=$uuid fazalfarhan01/earnapp:lite); then
+    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME $RESTART_POLICY $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp -e EARNAPP_UUID=$uuid fazalfarhan01/earnapp:lite); then
       echo "$CONTAINER_ID" | tee -a $containers_file
       echo "earnapp$UNIQUE_ID$i" | tee -a $container_names_file
     else
