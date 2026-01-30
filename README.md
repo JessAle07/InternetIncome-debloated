@@ -71,14 +71,11 @@ sudo bash internetIncome.sh --start
 - CastarSDK
 - Wipter
 
-**Browser-Based:**WILL BE REMOVED IN FUTURE COMMITS
+**Browser-Based:*
 - Mysterium
 - Grass
 - Gradient
-- Ebesucher
-- Adnade
 - Uprock
-- Custom Firefox/Chrome
 
 ---
 
@@ -144,7 +141,6 @@ sudo bash internetIncome.sh --deleteBackup
 After starting, check these files for access URLs:
 - `earnapp.txt` - Add these URLs to your Earnapp dashboard
 - `mysterium.txt` - Mysterium node access
-- `ebesucher.txt`, `adnade.txt`, `uprock.txt` - Browser access
 
 View running containers:
 ```bash
