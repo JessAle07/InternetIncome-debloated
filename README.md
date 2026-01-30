@@ -14,7 +14,6 @@ Earn passive income by sharing your internet bandwidth through Docker containers
 - **Custom Device Names**: Use `honeygain_names.txt` or auto-generate random names
 - **Earnapp Improved**: No more daily restarts, better stability
 - **Wizardgain Support**: New platform added
-- **rmeoved**: adnade , esb thingy , chrome/firefox related programs
 
 ---
 
