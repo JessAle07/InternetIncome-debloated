@@ -61,20 +61,15 @@ sudo bash internetIncome.sh --start
 - ProxyRack
 - ProxyBase
 - Proxylite
-- PacketShare
-- PacketSDK
 - EarnFM
 - Gaganode
 - Titan Network
 - URnetwork
 - Nodepay
-- CastarSDK
 - Wipter
 
 **Browser-Based:**
 - Mysterium
-- Grass
-- Gradient
 - Uprock
 
 ---
