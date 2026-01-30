@@ -1013,6 +1013,26 @@ if [[ "$1" == "--start" ]]; then
         fi
     fi
   done < $properties_file
+  # ================= Container Restart Policy =================
+  if [[ -z "$CONTAINER_RESTART_POLICY" ]]; then
+    CONTAINER_RESTART_POLICY="always"
+  fi
+  
+  case "$CONTAINER_RESTART_POLICY" in
+    always|unless-stopped|no)
+      ;;
+    *)
+      echo -e "${RED}Invalid CONTAINER_RESTART_POLICY: $CONTAINER_RESTART_POLICY${NOCOLOUR}"
+      echo -e "${YELLOW}Valid values: always | unless-stopped | no${NOCOLOUR}"
+      exit 1
+      ;;
+  esac
+  
+  RESTART_POLICY="--restart=$CONTAINER_RESTART_POLICY"
+  # ============================================================
+
+
+  
 
   # Setting Device name
   if [[ ! $DEVICE_NAME ]]; then
