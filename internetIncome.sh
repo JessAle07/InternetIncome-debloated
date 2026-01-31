@@ -596,17 +596,66 @@ start_containers() {
           exit 1
         fi
       fi
-      docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM -v /var/run/docker.sock:/var/run/docker.sock -v $(which docker):/usr/bin/docker -v $PWD:/urnetwork docker:18.06.2-dind /bin/sh -c 'apk add --no-cache bash && cd /urnetwork && chmod +x /urnetwork/restart.sh && while true; do sleep 86400; /urnetwork/restart.sh --restartURnetwork; done')
-      execute_docker_command "URnetwork Restart" "dindurnetwork$UNIQUE_ID$i" "${docker_parameters[@]}"
-    fi  
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" bringyour/community-provider:latest provide)
-    execute_docker_command "URnetwork" "urnetwork$UNIQUE_ID$i" "${docker_parameters[@]}"
+      if [ "$UR_NETWORK_PROXY_MODE" = true ]; then
+        if [ -f "$proxies_file" ]; then
+          SOCKS_PROXIES=()
+          while IFS= read -r line; do
+            # Skip empty lines
+            [[ -z "$line" ]] && continue
+            if [[ "$line" == socks5://* ]]; then
+              # Remove socks5:// prefix for config format
+              SOCKS_PROXY=$line
+              # Strip scheme
+              SOCKS_NO_SCHEME="${SOCKS_PROXY#socks5://}"
+              # If auth exists, split it
+              if [[ "$SOCKS_NO_SCHEME" == *@* ]]; then
+                SOCKS_CREDS="${SOCKS_NO_SCHEME%@*}"
+                SOCKS_HOSTPORT="${SOCKS_NO_SCHEME#*@}"
+                SOCKS_USER="${SOCKS_CREDS%%:*}"
+                SOCKS_PASS="${SOCKS_CREDS#*:}"
+              else
+                SOCKS_HOSTPORT="$SOCKS_NO_SCHEME"
+                SOCKS_USER=""
+                SOCKS_PASS=""
+              fi
+              SOCKS_ADDR="${SOCKS_HOSTPORT%%:*}"
+              SOCKS_PORT="${SOCKS_HOSTPORT##*:}"
+	          if [[ $SOCKS_USER && $SOCKS_PASS ]]; then
+                echo "$SOCKS_ADDR:$SOCKS_PORT:$SOCKS_USER:$SOCKS_PASS" >> $ur_proxies_file
+              else
+                echo "$SOCKS_ADDR:$SOCKS_PORT" >> $ur_proxies_file
+              fi
+            fi
+          done < "$proxies_file"
+        fi
+	    if [ ! -f "$ur_proxies_file" ]; then
+          echo -e "${RED}Proxies file $ur_proxies_file does not have socks5 proxies. Exiting..${NOCOLOUR}"
+          exit 1
+        fi
+	    # Generate proxy file using urnetwork
+	    sudo docker run --rm $DNS_VOLUME -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" -v "$PWD/$ur_proxies_file:/root/ur_proxy.txt" bringyour/community-provider:latest proxy add --proxy_file=/root/ur_proxy.txt
+	    sleep 1
+	    if [ ! -f "$PWD/$urnetwork_data_folder/data/.urnetwork/proxy" ]; then
+          echo -e "${RED}Proxy file could not be generated for URnetwork. Exiting..${NOCOLOUR}"
+          exit 1
+        fi
+	    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" bringyour/community-provider:latest provide)
+        execute_docker_command "URnetwork" "urnetwork$UNIQUE_ID$i" "${docker_parameters[@]}"
+      else 
+        docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM -v /var/run/docker.sock:/var/run/docker.sock -v $(which docker):/usr/bin/docker -v $PWD:/urnetwork docker:18.06.2-dind /bin/sh -c 'apk add --no-cache bash && cd /urnetwork && chmod +x /urnetwork/restart.sh && while true; do sleep 86400; /urnetwork/restart.sh --restartURnetwork; done')
+        execute_docker_command "URnetwork Restart" "dindurnetwork$UNIQUE_ID$i" "${docker_parameters[@]}"
+      fi
+    fi 
+    if [ "$UR_NETWORK_PROXY_MODE" != true ]; then
+      docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" bringyour/community-provider:latest provide)
+      execute_docker_command "URnetwork" "urnetwork$UNIQUE_ID$i" "${docker_parameters[@]}"
+    fi
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
       echo -e "${RED}URnetwork Node is not enabled. Ignoring URnetwork..${NOCOLOUR}"
     fi
   fi
-
+  
   # Starting Earn Fm container
   if [[ $EARN_FM_API ]]; then
     if [ "$container_pulled" = false ]; then
