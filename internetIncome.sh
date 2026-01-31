@@ -208,6 +208,20 @@ execute_docker_command() {
   fi
 }
 
+format_duration() {
+  local seconds=$1
+  local mins=$((seconds / 60))
+  local secs=$((seconds % 60))
+
+  if (( mins > 0 )); then
+    echo "${mins} min ${secs} sec"
+  else
+    echo "${secs} sec"
+  fi
+}
+
+
+
 # Start all containers
 start_containers() {
 
@@ -880,6 +894,7 @@ fi
 if [[ "$1" == "--start" ]]; then
   echo -e "\n\nStarting.."
   STATUS=0;
+  SCRIPT_START_TIME=$(date +%s)
 
   # Check if the required files are present
   for required_file in "${required_files[@]}"; do
@@ -1056,6 +1071,13 @@ if [[ "$1" == "--start" ]]; then
       execute_docker_command "Internet Income Watch Tower" "$WATCH_TOWER_NAME" "${docker_parameters[@]}"
     fi
   fi
+  
+  SCRIPT_END_TIME=$(date +%s)
+  TOTAL_TIME=$((SCRIPT_END_TIME - SCRIPT_START_TIME))
+  
+  echo -e "${GREEN}All containers processed.${NOCOLOUR}"
+  echo -e "${GREEN}Total runtime: $(format_duration $TOTAL_TIME)${NOCOLOUR}"
+
   exit 1
 fi
 
