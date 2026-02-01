@@ -535,9 +535,9 @@ start_containers() {
   # Starting PacketSDK container
   if [[ $PACKET_SDK_APP_KEY ]]; then
     if [ "$container_pulled" = false ]; then
-      sudo docker pull packetsdk/packetsdk:latest
+      sudo docker pull techroy23/docker-packetsdk
     fi
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN packetsdk/packetsdk:latest -appkey=$PACKET_SDK_APP_KEY)
+    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN techroy23/docker-packetsdk -appkey=$PACKET_SDK_APP_KEY)
     execute_docker_command "PacketSDK" "packetsdk$UNIQUE_ID$i" "${docker_parameters[@]}"
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
@@ -549,9 +549,9 @@ start_containers() {
     # Starting CastarSDK container
   if [[ $CASTAR_SDK_KEY ]]; then
     if [ "$container_pulled" = false ]; then
-      sudo docker pull ghcr.io/bhavishyadahiya/castarsdk-docker/castarsdk:latest
+      sudo docker pull techroy23/docker-castarsdk
     fi
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e KEY=$CASTAR_SDK_KEY ghcr.io/bhavishyadahiya/castarsdk-docker/castarsdk:latest)
+    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e KEY=$CASTAR_SDK_KEY techroy23/docker-castarsdk)
     execute_docker_command "CastarSDK" "castarsdk$UNIQUE_ID$i" "${docker_parameters[@]}"
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
