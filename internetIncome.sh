@@ -661,9 +661,9 @@ start_containers() {
   # Starting Earn Fm container
   if [[ $EARN_FM_API ]]; then
     if [ "$container_pulled" = false ]; then
-      sudo docker pull earnfm/earnfm-client:latest
+      sudo docker pull techroy23/docker-earnfm:latest
     fi
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e EARNFM_TOKEN=$EARN_FM_API earnfm/earnfm-client:latest)
+    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e TOKEN=$EARN_FM_API techroy23/docker-earnfm:latest)
     execute_docker_command "EarnFm" "earnfm$UNIQUE_ID$i" "${docker_parameters[@]}"
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
@@ -810,9 +810,9 @@ start_containers() {
   # Starting PacketStream container
   if [[ $PACKETSTREAM_CID ]]; then
     if [ "$container_pulled" = false ]; then
-      sudo docker pull packetstream/psclient:latest
+      sudo docker pull techroy23/docker-packetstream:latest
     fi
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e CID=$PACKETSTREAM_CID packetstream/psclient:latest)
+    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e CID=$PACKETSTREAM_CID techroy23/docker-packetstream:latest)
     execute_docker_command "PacketStream" "packetstream$UNIQUE_ID$i" "${docker_parameters[@]}"
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
