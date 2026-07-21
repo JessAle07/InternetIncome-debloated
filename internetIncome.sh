@@ -426,7 +426,7 @@ start_containers() {
   fi
 
   # Starting Mysterium container
-  if [ "$MYSTERIUM" = true ]; then
+  if [ "$MYSTERium" = true ]; then
     if [ "$container_pulled" = false ]; then
       sudo docker pull mysteriumnetwork/myst:latest
     fi
@@ -1224,19 +1224,40 @@ fi
 
 # Restart containers
 if [[ "$1" == "--restart" ]]; then
-  echo -e "\n\nRestarting Containers.."
 
-  # Restart containers by container names
   if [ -f "$container_names_file" ]; then
-    for i in `cat $container_names_file`; do
-      # Check if container exists
-      if sudo docker inspect $i >/dev/null 2>&1; then
-        # Restart container
-        sudo docker restart $i
-      else
-        echo "Container $i does not exist"
+    if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
+      # Restart solo el/los contenedor(es) de la IP número $2
+      echo -e "\n\nRestarting containers for IP #$2.."
+      MATCH_FOUND=false
+      for i in `cat $container_names_file`; do
+        # Extrae el índice exacto ignorando el prefijo de letras y los 32 caracteres del UNIQUE_ID
+        SUFFIX=$(echo "$i" | sed -E 's/^[a-zA-Z]+[a-f0-9]{32}([0-9]+)$/\1/')
+        
+        if [[ "$SUFFIX" == "$2" ]]; then
+          MATCH_FOUND=true
+          if sudo docker inspect $i >/dev/null 2>&1; then
+            sudo docker restart $i
+            echo -e "${GREEN}Container $i restarted${NOCOLOUR}"
+          else
+            echo "Container $i does not exist"
+          fi
+        fi
+      done
+      if [ "$MATCH_FOUND" = false ]; then
+        echo -e "${RED}No containers found matching IP #$2..${NOCOLOUR}"
       fi
-    done
+    else
+      # Restart de todos (comportamiento original)
+      echo -e "\n\nRestarting Containers.."
+      for i in `cat $container_names_file`; do
+        if sudo docker inspect $i >/dev/null 2>&1; then
+          sudo docker restart $i
+        else
+          echo "Container $i does not exist"
+        fi
+      done
+    fi
   fi
   exit 1
 fi
