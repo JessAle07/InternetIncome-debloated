@@ -1226,33 +1226,56 @@ fi
 if [[ "$1" == "--restart" ]]; then
 
   if [ -f "$container_names_file" ]; then
-    if [[ -n "$2" && "$2" =~ ^[0-9]+$ ]]; then
-      # Restart solo el/los contenedor(es) de la IP número $2
-      echo -e "\n\nRestarting containers for IP #$2.."
-      MATCH_FOUND=false
-      for i in `cat $container_names_file`; do
-        # Extrae el índice exacto ignorando el prefijo de letras y los 32 caracteres del UNIQUE_ID
-        SUFFIX=$(echo "$i" | sed -E 's/^[a-zA-Z]+[a-f0-9]{32}([0-9]+)$/\1/')
-        
-        if [[ "$SUFFIX" == "$2" ]]; then
-          MATCH_FOUND=true
-          if sudo docker inspect $i >/dev/null 2>&1; then
-            sudo docker restart $i
-            echo -e "${GREEN}Container $i restarted${NOCOLOUR}"
-          else
-            echo "Container $i does not exist"
+    if [[ -n "$2" && "$2" =~ ^[0-9,-]+$ ]]; then
+      # Procesar comas y guiones (ej. 1,2,5-8)
+      TARGET_IDS=()
+      IFS=',' read -ra PARTS <<< "$2"
+      for part in "${PARTS[@]}"; do
+        if [[ "$part" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+          start="${BASH_REMATCH[1]}"
+          end="${BASH_REMATCH[2]}"
+          # Forzamos base 10 (10#) para evitar el error octal si pones "08" o "09"
+          if (( 10#$start <= 10#$end )); then
+            for (( n=10#$start; n<=10#$end; n++ )); do
+              TARGET_IDS+=("$n")
+            done
           fi
+        elif [[ "$part" =~ ^[0-9]+$ ]]; then
+          # Lo agregamos limpio en base 10
+          TARGET_IDS+=("$((10#$part))")
         fi
       done
-      if [ "$MATCH_FOUND" = false ]; then
-        echo -e "${RED}No containers found matching IP #$2..${NOCOLOUR}"
+
+      if [ ${#TARGET_IDS[@]} -gt 0 ]; then
+        echo -e "\n\nRestarting containers for target(s): ${TARGET_IDS[*]}.."
+        MATCH_FOUND=false
+        for i in $(cat "$container_names_file"); do
+          # Regex a prueba de balas: cualquier texto inicial + 32 caracteres hex + sufijo
+          SUFFIX=$(echo "$i" | sed -E 's/^.*[a-f0-9]{32}([0-9]+)$/\1/')
+          
+          for target in "${TARGET_IDS[@]}"; do
+            if [[ "$SUFFIX" == "$target" ]]; then
+              MATCH_FOUND=true
+              if sudo docker inspect "$i" >/dev/null 2>&1; then
+                sudo docker restart "$i"
+                echo -e "${GREEN}Container $i restarted${NOCOLOUR}"
+              else
+                echo "Container $i does not exist"
+              fi
+              break # Detiene la búsqueda de targets para este contenedor una vez hallado
+            fi
+          done
+        done
+        if [ "$MATCH_FOUND" = false ]; then
+          echo -e "${RED}No containers found matching specified IP(s)..${NOCOLOUR}"
+        fi
       fi
     else
-      # Restart de todos (comportamiento original)
+      # Restart de todos (comportamiento original si no hay parámetros o falla el regex)
       echo -e "\n\nRestarting Containers.."
-      for i in `cat $container_names_file`; do
-        if sudo docker inspect $i >/dev/null 2>&1; then
-          sudo docker restart $i
+      for i in $(cat "$container_names_file"); do
+        if sudo docker inspect "$i" >/dev/null 2>&1; then
+          sudo docker restart "$i"
         else
           echo "Container $i does not exist"
         fi
@@ -1261,6 +1284,7 @@ if [[ "$1" == "--restart" ]]; then
   fi
   exit 1
 fi
+
 
 # Delete backup files and folders
 if [[ "$1" == "--deleteBackup" ]]; then
