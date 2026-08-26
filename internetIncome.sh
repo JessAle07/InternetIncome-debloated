@@ -836,48 +836,68 @@ start_containers() {
   # Starting Earnapp container
   if [ "$EARNAPP" = true ]; then
     echo -e "${GREEN}Starting Earnapp container..${NOCOLOUR}"
-    echo -e "${GREEN}Copy the following node url and paste in your earnapp dashboard${NOCOLOUR}"
-    echo -e "${GREEN}You will also find the urls in the file $earnapp_file in the same folder${NOCOLOUR}"
-    for loop_count in {1..500}; do
-      if [ "$loop_count" -eq 500 ]; then
-        echo -e "${RED}Unique UUID cannot be generated for Earnapp. Exiting..${NOCOLOUR}"
-        exit 1
-      fi
-      RANDOM_ID=`cat /dev/urandom | LC_ALL=C tr -dc 'a-f0-9' | dd bs=1 count=32 2>/dev/null`
-      if [ -f $earnapp_file ]; then
-        if ! grep -qF "$RANDOM_ID" "$earnapp_file"; then
-          break
-        fi
-      else
-        break;
-      fi
-    done
+
+    if [[ -z "$EARNAPP_IMAGE" ]]; then
+      EARNAPP_IMAGE="madereddy/earnapp:test"
+    fi
+
     date_time=`date "+%D %T"`
     if [ "$container_pulled" = false ]; then
-      sudo docker pull ghcr.io/xterna/earnapp:latest
+      sudo docker pull $EARNAPP_IMAGE
     fi
     mkdir -p $PWD/$earnapp_data_folder/data$i
     sudo chmod -R 777 $PWD/$earnapp_data_folder/data$i
-    if [ -f $earnapp_file ] && uuid=$(sed "${i}q;d" $earnapp_file | grep -o 'https[^[:space:]]*'| sed 's/https:\/\/earnapp.com\/r\///g');then
-      if [[ $uuid ]];then
-        echo $uuid
-      else
-        echo "UUID does not exist, creating UUID"
-        uuid=sdk-node-$RANDOM_ID
-        printf "$date_time https://earnapp.com/r/%s\n" "$uuid" | tee -a $earnapp_file
-      fi
-    else
-      echo "UUID does not exist, creating UUID"
-      uuid=sdk-node-$RANDOM_ID
-      printf "$date_time https://earnapp.com/r/%s\n" "$uuid" | tee -a $earnapp_file
+
+    # Re-use the node id already linked for this index, if there is one. Otherwise the
+    # container starts without EARNAPP_UUID and the client creates and registers its own
+    # id, which is the only kind Earnapp accepts when linking a new node.
+    uuid=""
+    if [ -f $earnapp_file ]; then
+      uuid=$(sed "${i}q;d" $earnapp_file | grep -o 'https[^[:space:]]*'| sed 's/https:\/\/earnapp.com\/r\///g')
     fi
 
-    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME $RESTART_POLICY $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp -e EARNAPP_UUID=$uuid ghcr.io/xterna/earnapp:latest); then
+    EARNAPP_UUID_PARAM=""
+    if [[ $uuid ]]; then
+      echo -e "${GREEN}Reusing Earnapp node id $uuid${NOCOLOUR}"
+      EARNAPP_UUID_PARAM="-e EARNAPP_UUID=$uuid"
+    else
+      echo "UUID does not exist, letting Earnapp create its own node id"
+    fi
+
+    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME $RESTART_POLICY $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp $EARNAPP_UUID_PARAM $EARNAPP_IMAGE); then
       echo "$CONTAINER_ID" | tee -a $containers_file
       echo "earnapp$UNIQUE_ID$i" | tee -a $container_names_file
     else
       echo -e "${RED}Failed to start container for Earnapp. Exiting..${NOCOLOUR}"
       exit 1
+    fi
+
+    # Read the node id the client writes in /etc/earnapp/uuid and save it in earnapp.txt
+    if [[ -z "$uuid" ]]; then
+      earnapp_uuid_file="$PWD/$earnapp_data_folder/data$i/uuid"
+      earnapp_waited=0
+      while [ "$earnapp_waited" -lt 60 ]; do
+        if [ -s "$earnapp_uuid_file" ]; then
+          uuid=$(tr -d ' \t\r\n' < "$earnapp_uuid_file")
+          break
+        fi
+        sleep 2
+        earnapp_waited=$((earnapp_waited + 2))
+      done
+      if [[ $uuid ]]; then
+        printf "$date_time https://earnapp.com/r/%s\n" "$uuid" | tee -a $earnapp_file
+      else
+        # Keep one line per container index, the reuse above reads line "$i"
+        printf "$date_time not-registered earnapp$UNIQUE_ID$i\n" | tee -a $earnapp_file
+        echo -e "${YELLOW}Earnapp did not create a node id. Read it later with: sudo docker exec earnapp$UNIQUE_ID$i cat /etc/earnapp/uuid${NOCOLOUR}"
+      fi
+    fi
+
+    if [[ $uuid ]]; then
+      echo -e "${GREEN}Copy the following node url and paste in your earnapp dashboard${NOCOLOUR}"
+      echo -e "${GREEN}https://earnapp.com/r/$uuid${NOCOLOUR}"
+      echo -e "${GREEN}Give the node a couple of minutes to register before linking it${NOCOLOUR}"
+      echo -e "${GREEN}You will also find the urls in the file $earnapp_file in the same folder${NOCOLOUR}"
     fi
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then

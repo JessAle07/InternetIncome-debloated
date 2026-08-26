@@ -106,6 +106,12 @@ WIZARDGAIN_EMAIL='your@email.com'
 EARNAPP=true
 ```
 
+The node id is now created by the Earnapp client itself and saved to `earnapp.txt`,
+because ids invented before the client runs are rejected on linking with "the device is
+not found". Ids already listed in `earnapp.txt` keep being reused. Give a new node a
+couple of minutes to register before pasting its url in the dashboard.
+The image can be changed with `EARNAPP_IMAGE` in `properties.conf`.
+
 ---
 
 ## 🔧 Commands
