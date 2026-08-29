@@ -24,7 +24,25 @@ Earn passive income by sharing your internet bandwidth through Docker containers
 sudo bash internetIncome.sh --install
 ```
 
-### 2. Configure
+### 2. Install the AppArmor profile (Proxmox 9, Debian 13, recent Ubuntu)
+Check whether your kernel mediates AF_UNIX through AppArmor:
+```bash
+cat /sys/kernel/security/apparmor/features/network/af_unix
+```
+
+If it prints `yes`, install the profile — without it the tun2socks containers die
+with `get mtu: permission denied` and the app containers fail every DNS lookup
+with `curl: (6) getaddrinfo() thread failed to start`:
+```bash
+sudo cp apparmor/docker-tun /etc/apparmor.d/docker-tun
+sudo apparmor_parser -r -W /etc/apparmor.d/docker-tun
+```
+
+If the file is missing or prints `no`, skip this step. `internetIncome.sh`
+detects the profile itself and behaves exactly as before when it is absent.
+See [apparmor/README.md](apparmor/README.md) for what the profile does and why.
+
+### 3. Configure
 Edit `properties.conf` with your credentials:
 ```bash
 nano properties.conf
@@ -35,10 +53,10 @@ nano properties.conf
 - Enable network mode: `USE_PROXIES=true` or `USE_DIRECT_CONNECTION=true`
 - Leave empty any apps you don't want to use
 
-### 3. Optional: Custom Honeygain Names
+### 4. Optional: Custom Honeygain Names
 Edit `honeygain_names.txt` with one name per line, or let the script auto-generate random names.
 
-### 4. Start
+### 5. Start
 ```bash
 sudo bash internetIncome.sh --start
 ```
@@ -161,6 +179,14 @@ sudo bash internetIncome.sh --delete
 sudo bash internetIncome.sh --start
 ```
 
+**Containers stuck in `Created`, or `get mtu: permission denied`, or
+`curl: (6) getaddrinfo() thread failed to start`?** Your kernel mediates AF_UNIX
+through AppArmor and the profile is not installed — see step 2 of the Quick
+Start. Confirm with:
+```bash
+sudo dmesg | grep 'apparmor=.DENIED'
+```
+
 **Port conflicts?** The script auto-finds available ports.
 
 **Proxy issues?** Verify format: `protocol://user:pass@host:port`
@@ -172,6 +198,7 @@ sudo bash internetIncome.sh --start
 - `internetIncome.sh` - Main script
 - `properties.conf` - Your configuration
 - `proxies.txt` - Proxy list (if using proxies)
+- `apparmor/docker-tun` - AppArmor profile for hosts that mediate AF_UNIX
 - `honeygain_names.txt` - Custom Honeygain device names (optional)
 - `earnapp.txt` - Generated Earnapp URLs
 - `*-data/` folders - Persistent data (preserved on delete)
