@@ -1,0 +1,81 @@
+abi <abi/4.0>,
+#include <tunables/global>
+
+# docker-tun -- Docker's built-in "docker-default" profile, compiled against
+# AppArmor ABI 4.0 and with explicit AF_UNIX rules. Used for every container
+# internetIncome.sh starts, not just the tun2socks ones.
+#
+# Why this file exists
+# -------------------
+# This host runs a Proxmox kernel with AppArmor af_unix mediation enabled:
+#
+#   /sys/kernel/security/apparmor/features/network/af_unix -> yes
+#   /sys/kernel/security/apparmor/features/network_v9       -> present
+#
+# The docker-default profile that docker.io 26.1.5 generates at daemon start
+# declares no "abi" rule, so apparmor_parser 4.1.1 compiles it against the
+# legacy ABI. Its bare "network," rule then produces a net-class rule table with
+# no entry matching AF_UNIX socket creation, and the kernel logs:
+#
+#   apparmor="DENIED" operation="create" class="net" info="failed protocol match"
+#   error=-13 profile="docker-default" comm="tun2socks" family="unix"
+#   sock_type="dgram" protocol=0 requested="create" denied="create"
+#
+# tun2socks hits this because wireguard-go opens an AF_UNIX/SOCK_DGRAM socket as
+# a scratch descriptor for the SIOCGIFMTU ioctl when it reads the MTU of the tun
+# device it just created. That read fails, and tun2socks aborts with:
+#
+#   FATAL engine/engine.go:45 [ENGINE] failed to start: get mtu: permission denied
+#
+# Declaring "abi <abi/4.0>," makes the parser emit policy that matches what this
+# kernel actually mediates, which fixes the AF_UNIX denial. Every other
+# docker-default restriction (deny mount, the /proc and /sys write denials,
+# ptrace and signal scoping) is kept as-is. The stricter ABI also mediates
+# signals more tightly, so the rules below name "runc" explicitly -- this host
+# has an apparmor profile for runc, and container lifecycle signals carry that
+# peer label.
+#
+# Apply to a container:  docker run --security-opt apparmor=docker-tun ...
+# Load / reload:         apparmor_parser -r -W /etc/apparmor.d/docker-tun
+# Remove:                apparmor_parser -R /etc/apparmor.d/docker-tun
+
+profile docker-tun flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  network,
+  unix,
+  capability,
+  file,
+  umount,
+
+  # Host (privileged) processes, dockerd and runc may signal container processes.
+  signal (receive) peer=unconfined,
+  signal (receive) peer=runc,
+  signal (receive) peer=runc//*,
+  # Container processes may send signals amongst themselves.
+  signal (send,receive) peer=docker-tun,
+
+  deny @{PROC}/* w,   # deny write for all files directly in /proc (not in a subdir)
+  # deny write to files not in /proc/<number>/** or /proc/sys/**
+  deny @{PROC}/{[^1-9],[^1-9][^1-9],[^1-9][^1-9][^1-9]*}/** w,
+  deny @{PROC}/sys/[^k]** w,  # deny /proc/sys except /proc/sys/k* (effectively /proc/sys/kernel)
+  deny @{PROC}/sys/kernel/{?,??,[^s][^h][^m]**} w,  # deny everything except shm* in /proc/sys/kernel/
+  deny @{PROC}/sysrq-trigger rwklx,
+  deny @{PROC}/kcore rwklx,
+
+  deny mount,
+
+  deny /sys/[^f]*/** wklx,
+  deny /sys/f[^s]*/** wklx,
+  deny /sys/fs/[^c]*/** wklx,
+  deny /sys/fs/c[^g]*/** wklx,
+  deny /sys/fs/cg[^r]*/** wklx,
+  deny /sys/firmware/** rwklx,
+  deny /sys/devices/virtual/powercap/** rwklx,
+  deny /sys/kernel/security/** rwklx,
+
+  # suppress ptrace denials when using 'docker ps' or using 'ps' inside a container
+  ptrace (trace,read,tracedby,readby) peer=docker-tun,
+  ptrace (readby,tracedby) peer=unconfined,
+  ptrace (readby,tracedby) peer=runc,
+}
