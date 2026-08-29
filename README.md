@@ -40,6 +40,9 @@ sudo apparmor_parser -r -W /etc/apparmor.d/docker-tun
 
 If the file is missing or prints `no`, skip this step. `internetIncome.sh`
 detects the profile itself and behaves exactly as before when it is absent.
+Already ran `--start` and hit this? See
+[The AppArmor / AF_UNIX problem](#the-apparmor--af_unix-problem) — existing
+containers have to be recreated, installing the profile is not enough on its own.
 See [apparmor/README.md](apparmor/README.md) for what the profile does and why.
 
 ### 3. Configure
@@ -179,13 +182,52 @@ sudo bash internetIncome.sh --delete
 sudo bash internetIncome.sh --start
 ```
 
-**Containers stuck in `Created`, or `get mtu: permission denied`, or
-`curl: (6) getaddrinfo() thread failed to start`?** Your kernel mediates AF_UNIX
-through AppArmor and the profile is not installed — see step 2 of the Quick
-Start. Confirm with:
+### The AppArmor / AF_UNIX problem
+
+Any of these means the host is denying containers the unix sockets they need:
+
+- containers stuck in `Created` and never reaching `Up`
+- `[ENGINE] failed to start: get mtu: permission denied` in a `tun` container
+- `curl: (6) getaddrinfo() thread failed to start` in an app container
+- Earnapp writing `not-registered...` into `earnapp.txt` instead of
+  `https://earnapp.com/r/sdk-node-...` links
+
+**Step 1 — confirm it's this.** Both of these should agree:
 ```bash
-sudo dmesg | grep 'apparmor=.DENIED'
+cat /sys/kernel/security/apparmor/features/network/af_unix   # yes = affected
+sudo dmesg | grep 'apparmor=.DENIED'                         # shows the denials
 ```
+If the first prints `no`, or the file does not exist, this is not your problem —
+stop here, the rest of this section will not help.
+
+**Step 2 — install the profile.** From inside this repo:
+```bash
+sudo cp apparmor/docker-tun /etc/apparmor.d/docker-tun
+sudo apparmor_parser -r -W /etc/apparmor.d/docker-tun
+grep -c '^docker-tun ' /sys/kernel/security/apparmor/profiles   # expect 1
+```
+
+**Step 3 — recreate the containers.** Installing the profile does *not* fix
+containers that already exist: the profile is chosen when a container is created
+and is baked into it, so restarting a broken one changes nothing. They have to be
+made again:
+```bash
+sudo bash internetIncome.sh --delete
+sudo bash internetIncome.sh --start
+```
+
+**Step 4 — verify it took.** Should print `docker-tun`, not `docker-default`:
+```bash
+sudo docker inspect --format '{{.Name}} {{.AppArmorProfile}}' $(sudo docker ps -q)
+```
+No new `apparmor=.DENIED` lines in `dmesg`, and every container `Up` rather than
+`Created`. That's it — nothing to edit, no config to change. The script picks the
+profile up on its own once it is loaded, and `apparmor.service` reloads it from
+`/etc/apparmor.d` on every boot, so this is a one-time thing per machine.
+
+See [apparmor/README.md](apparmor/README.md) for why this happens.
+
+---
 
 **Port conflicts?** The script auto-finds available ports.
 
