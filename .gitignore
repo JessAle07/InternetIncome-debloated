@@ -1,0 +1,29 @@
+# Runtime state written by internetIncome.sh. All of it is machine-specific:
+# committing any of it means two machines claim the same nodes, and a stale
+# resolv.conf makes --start refuse to run on a fresh clone.
+containernames.txt
+subnets.txt
+networks.txt
+resolv.conf
+earnapp.txt
+earnapp.txt.bak
+uprock.txt
+mysterium.txt
+proxyrack.txt
+ur_proxies.txt
+cloudflared
+
+earnappdata/
+mysterium-data/
+bitping-data/
+urnetwork-data/
+traffmonetizerdata/
+
+# proxies.txt and properties.conf are tracked, so this file cannot protect them
+# -- .gitignore has no effect on files already in the index. Both are held at
+# their credential-free versions with:
+#
+#   git update-index --assume-unchanged proxies.txt properties.conf
+#
+# which makes git ignore local modifications to them. Run that again after any
+# fresh clone, before putting real proxies or app credentials in them.

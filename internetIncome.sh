@@ -40,6 +40,19 @@ bitping_data_folder="bitping-data"
 urnetwork_data_folder="urnetwork-data"
 restart_file="restart.sh"
 generate_device_ids_file="generateDeviceIds.sh"
+
+# Kernels with AppArmor af_unix mediation (Proxmox 9 / Debian 13 and similar) deny
+# AF_UNIX socket creation under the docker-default profile Docker generates, because
+# that profile declares no AppArmor ABI and so is compiled against the legacy one.
+# tun2socks then dies with "get mtu: permission denied", and the app containers fail
+# every DNS lookup with "curl: (6) getaddrinfo() thread failed to start". Run the
+# containers under /etc/apparmor.d/docker-tun instead when it is loaded: that is
+# docker-default compiled against ABI 4.0, with the same restrictions otherwise.
+APPARMOR_PARAM=""
+if [ -r /sys/kernel/security/apparmor/profiles ] &&
+   grep -qa '^docker-tun ' /sys/kernel/security/apparmor/profiles 2>/dev/null; then
+  APPARMOR_PARAM="--security-opt apparmor=docker-tun"
+fi
 traffmonetizer_data_folder="traffmonetizerdata"
 proxyrack_file="proxyrack.txt"
 cloudflare_file="cloudflared"
@@ -191,9 +204,9 @@ execute_docker_command() {
   
   echo -e "${GREEN}Starting $app_name container..${NOCOLOUR}"
   if [[ "$app_name" == "VPN" ]]; then
-    CONTAINER_ID=$(eval "sudo docker run $DOCKER_INIT -d --name $container_name $RESTART_POLICY ${container_parameters[@]:2}")
+    CONTAINER_ID=$(eval "sudo docker run $DOCKER_INIT -d --name $container_name $RESTART_POLICY $APPARMOR_PARAM ${container_parameters[@]:2}")
   else
-    CONTAINER_ID=$(sudo docker run $DOCKER_INIT -d $WATCH_TOWER_LABEL --name $container_name $RESTART_POLICY "${container_parameters[@]:2}")
+    CONTAINER_ID=$(sudo docker run $DOCKER_INIT -d $WATCH_TOWER_LABEL --name $container_name $RESTART_POLICY $APPARMOR_PARAM "${container_parameters[@]:2}")
   fi
 
   # Check if the container started successfully
@@ -489,7 +502,7 @@ start_containers() {
     mkdir -p $PWD/$bitping_data_folder/data$i/.bitpingd
     sudo chmod -R 777 $PWD/$bitping_data_folder/data$i/.bitpingd
     if [ ! -f "$PWD/$bitping_data_folder/data$i/.bitpingd/node.db" ]; then
-        sudo docker run --rm $NETWORK_TUN -v "$PWD/$bitping_data_folder/data$i/.bitpingd:/root/.bitpingd" --entrypoint /app/bitpingd bitping/bitpingd:latest login --email $BITPING_EMAIL --password $BITPING_PASSWORD
+        sudo docker run --rm $NETWORK_TUN $APPARMOR_PARAM -v "$PWD/$bitping_data_folder/data$i/.bitpingd:/root/.bitpingd" --entrypoint /app/bitpingd bitping/bitpingd:latest login --email $BITPING_EMAIL --password $BITPING_PASSWORD
     fi
     docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -v "$PWD/$bitping_data_folder/data$i/.bitpingd:/root/.bitpingd" bitping/bitpingd:latest)
     execute_docker_command "BitPing" "bitping$UNIQUE_ID$i" "${docker_parameters[@]}"
@@ -518,7 +531,7 @@ start_containers() {
     if [ "$container_pulled" = false ]; then
       sudo docker pull --platform=linux/amd64 pinors/antgain-cli:latest
     fi
-    if CONTAINER_ID=$(sudo docker run -d --platform=linux/amd64 --name antgain$UNIQUE_ID$i $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME --restart always -e ANTGAIN_API_KEY=$ANTGAIN_API_KEY pinors/antgain-cli:latest run); then
+    if CONTAINER_ID=$(sudo docker run -d --platform=linux/amd64 --name antgain$UNIQUE_ID$i $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME $APPARMOR_PARAM --restart always -e ANTGAIN_API_KEY=$ANTGAIN_API_KEY pinors/antgain-cli:latest run); then
       echo "$CONTAINER_ID" | tee -a $containers_file
       echo "antgain$UNIQUE_ID$i" | tee -a $container_names_file
     else
@@ -591,7 +604,7 @@ start_containers() {
       mkdir -p $PWD/$urnetwork_data_folder/data/.urnetwork
       sudo chmod -R 777 $PWD/$urnetwork_data_folder/data/.urnetwork
       if [ ! -f "$PWD/$urnetwork_data_folder/data/.urnetwork/jwt" ]; then
-        sudo docker run --rm $DNS_VOLUME $NETWORK_TUN -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" --entrypoint /usr/local/sbin/bringyour-provider bringyour/community-provider:latest auth $UR_AUTH_TOKEN
+        sudo docker run --rm $DNS_VOLUME $NETWORK_TUN $APPARMOR_PARAM -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" --entrypoint /usr/local/sbin/bringyour-provider bringyour/community-provider:latest auth $UR_AUTH_TOKEN
         sleep 1
         if [ ! -f "$PWD/$urnetwork_data_folder/data/.urnetwork/jwt" ]; then
           echo -e "${RED}JWT file could not be generated for URnetwork. Exiting..${NOCOLOUR}"
@@ -635,7 +648,7 @@ start_containers() {
           exit 1
         fi
 	    # Generate proxy file using urnetwork
-	    sudo docker run --rm $DNS_VOLUME -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" -v "$PWD/$ur_proxies_file:/root/ur_proxy.txt" bringyour/community-provider:latest proxy add --proxy_file=/root/ur_proxy.txt
+	    sudo docker run --rm $DNS_VOLUME $APPARMOR_PARAM -v "$PWD/$urnetwork_data_folder/data/.urnetwork:/root/.urnetwork" -v "$PWD/$ur_proxies_file:/root/ur_proxy.txt" bringyour/community-provider:latest proxy add --proxy_file=/root/ur_proxy.txt
 	    sleep 1
 	    if [ ! -f "$PWD/$urnetwork_data_folder/data/.urnetwork/proxy" ]; then
           echo -e "${RED}Proxy file could not be generated for URnetwork. Exiting..${NOCOLOUR}"
@@ -864,7 +877,7 @@ start_containers() {
       echo "UUID does not exist, letting Earnapp create its own node id"
     fi
 
-    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME $RESTART_POLICY $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp $EARNAPP_UUID_PARAM $EARNAPP_IMAGE); then
+    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME $RESTART_POLICY $APPARMOR_PARAM $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp $EARNAPP_UUID_PARAM $EARNAPP_IMAGE); then
       echo "$CONTAINER_ID" | tee -a $containers_file
       echo "earnapp$UNIQUE_ID$i" | tee -a $container_names_file
     else
