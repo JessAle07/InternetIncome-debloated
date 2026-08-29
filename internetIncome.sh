@@ -877,7 +877,25 @@ start_containers() {
       echo "UUID does not exist, letting Earnapp create its own node id"
     fi
 
-    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME $RESTART_POLICY $APPARMOR_PARAM $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp $EARNAPP_UUID_PARAM $EARNAPP_IMAGE); then
+    # The Earnapp client is a bundled Node binary, so it validates TLS against Node's
+    # own compiled-in root store rather than the image's /etc/ssl. When that store is
+    # older than the chain Earnapp's registration endpoint serves, the client reports
+    # SELF_SIGNED_CERT_IN_CHAIN or "Failed registration: check internet connection",
+    # mints a node id anyway, and the id is never recorded server-side -- linking it
+    # then gives "The device is not found". curl inside the container succeeding proves
+    # nothing here, because curl reads the system bundle and the client does not.
+    # NODE_EXTRA_CA_CERTS *adds* roots to Node's store rather than replacing it, so
+    # mounting the host bundle under its own name is safe even if it differs from the
+    # image's.
+    EARNAPP_CA_PARAM=""
+    host_ca_bundle="/etc/ssl/certs/ca-certificates.crt"
+    if [ -s "$host_ca_bundle" ]; then
+      EARNAPP_CA_PARAM="-v $host_ca_bundle:/etc/ssl/certs/host-ca-certificates.crt:ro -e NODE_EXTRA_CA_CERTS=/etc/ssl/certs/host-ca-certificates.crt"
+    else
+      echo -e "${RED}No CA bundle at $host_ca_bundle. Earnapp registration may fail; run: sudo apt install --reinstall ca-certificates && sudo update-ca-certificates${NOCOLOUR}"
+    fi
+
+    if CONTAINER_ID=$(sudo docker run -d --health-interval=24h --name earnapp$UNIQUE_ID$i $LOGS_PARAM $DNS_VOLUME $RESTART_POLICY $APPARMOR_PARAM $NETWORK_TUN -v $PWD/$earnapp_data_folder/data$i:/etc/earnapp $EARNAPP_CA_PARAM $EARNAPP_UUID_PARAM $EARNAPP_IMAGE); then
       echo "$CONTAINER_ID" | tee -a $containers_file
       echo "earnapp$UNIQUE_ID$i" | tee -a $container_names_file
     else
