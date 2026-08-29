@@ -229,6 +229,21 @@ See [apparmor/README.md](apparmor/README.md) for why this happens.
 
 ---
 
+**Earnapp node links say "The device is not found"?** Handled automatically — the
+script mounts the host CA bundle into the Earnapp containers and sets
+`NODE_EXTRA_CA_CERTS`. The client is a bundled Node binary, so it validates TLS
+against Node's own compiled-in root store rather than the image's `/etc/ssl`; when
+that store is older than the chain Earnapp's registration endpoint serves,
+registration fails silently while the client still mints a node id, so the id
+looks fine locally and will not link. If you see this anyway, make sure the host
+bundle exists:
+```bash
+sudo apt install --reinstall ca-certificates && sudo update-ca-certificates
+```
+Then recreate the Earnapp containers. Existing node ids in `earnapp.txt` are
+reused, so nothing is lost. Note that `curl` working inside the container does not
+rule this out — `curl` reads the system bundle, the client does not.
+
 **Port conflicts?** The script auto-finds available ports.
 
 **Proxy issues?** Verify format: `protocol://user:pass@host:port`
