@@ -1300,9 +1300,11 @@ if [[ "$1" == "--restart" ]]; then
       if [ ${#TARGET_IDS[@]} -gt 0 ]; then
         echo -e "\n\nRestarting containers for target(s): ${TARGET_IDS[*]}.."
         MATCH_FOUND=false
-        for i in $(cat "$container_names_file"); do
-          # Regex a prueba de balas: cualquier texto inicial + 32 caracteres hex + sufijo
-          SUFFIX=$(echo "$i" | sed -E 's/^.*[a-f0-9]{32}([0-9]+)$/\1/')
+        RESTART_UID=$(grep -m1 -oE '^earnapp[a-f0-9]{32}' "$container_names_file" | cut -c8-)
+		[ -z "$RESTART_UID" ] && { echo -e "${RED}No hay contenedor earnapp en $container_names_file${NOCOLOUR}"; exit 1; }
+		for i in $(cat "$container_names_file"); do
+          # Todo lo que va después del UNIQUE_ID es el número de instancia
+          SUFFIX="${i#*$RESTART_UID}"
           
           for target in "${TARGET_IDS[@]}"; do
             if [[ "$SUFFIX" == "$target" ]]; then
