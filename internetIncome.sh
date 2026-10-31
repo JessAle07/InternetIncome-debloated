@@ -238,6 +238,47 @@ format_duration() {
 
 
 # Start all containers
+# Start an SNI-spoof sidecar (zapret nfqws) inside the network namespace of a tun container.
+# The NFQUEUE rule lives only in that namespace, so host traffic is never touched.
+start_sni_spoof() {
+  local i=$1
+  local proxy=$2
+  local sp="${proxy#*://}"
+  sp="${sp##*@}"
+  local sp_port="${sp##*:}"
+  sp_port="${sp_port%%/*}"
+  local SPOOF_TTL_PARAM
+  local spoof_image="internetincome-sni-spoof:v72.9"
+
+  if ! [[ "$sp_port" =~ ^[0-9]+$ ]]; then
+    echo -e "${RED}Could not read the proxy port from $proxy. SNI spoof not started for tun$UNIQUE_ID$i..${NOCOLOUR}"
+    return 1
+  fi
+
+  if [ -z "$(sudo docker images -q $spoof_image 2>/dev/null)" ]; then
+    echo -e "${GREEN}Building SNI spoof image (one time)..${NOCOLOUR}"
+    if ! sudo docker build -t $spoof_image - <<'DOCKERFILE'
+FROM alpine:3.20 AS build
+RUN apk add --no-cache git build-base linux-headers libnetfilter_queue-dev libnfnetlink-dev libmnl-dev zlib-dev
+RUN git clone --depth 1 --branch v72.9 https://github.com/bol-van/zapret.git /z && make -C /z/nfq
+FROM alpine:3.20
+RUN apk add --no-cache iptables libnetfilter_queue libnfnetlink libmnl zlib
+COPY --from=build /z/nfq/nfqws /usr/local/bin/nfqws
+DOCKERFILE
+    then
+      echo -e "${RED}Failed to build the SNI spoof image. Exiting..${NOCOLOUR}"
+      exit 1
+    fi
+  fi
+
+  if [[ -n "$SNI_SPOOF_TTL" ]]; then
+    SPOOF_TTL_PARAM="--dpi-desync-ttl=$SNI_SPOOF_TTL"
+  fi
+
+  docker_parameters=($LOGS_PARAM --network=container:tun$UNIQUE_ID$i --cap-add=NET_ADMIN --cap-add=NET_RAW $spoof_image sh -c "iptables -t mangle -I POSTROUTING -p tcp --dport $sp_port -m connbytes --connbytes-dir=original --connbytes-mode=packets --connbytes 1:12 -j NFQUEUE --queue-num 200 --queue-bypass && exec nfqws --qnum=200 --uid=0:0 --dpi-desync=fake --dpi-desync-fooling=$SNI_SPOOF_FOOLING --dpi-desync-fake-tls-mod=sni=$SNI_SPOOF_DECOY $SPOOF_TTL_PARAM")
+  execute_docker_command "SNI Spoof" "sni$UNIQUE_ID$i" "${docker_parameters[@]}"
+}
+
 start_containers() {
 
   local i=$1
@@ -429,6 +470,9 @@ start_containers() {
       fi
       docker_parameters=($LOGS_PARAM $TUN_DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $CUSTOM_NETWORK -e LOGLEVEL=$TUN_LOG_PARAM -e PROXY=$proxy -e EXTRA_COMMANDS="$EXTRA_COMMANDS" --device /dev/net/tun $cloudflare_volume --cap-add=NET_ADMIN $combined_ports xjasonlyu/tun2socks:v2.6.0)
       execute_docker_command "Proxy" "tun$UNIQUE_ID$i" "${docker_parameters[@]}"
+    fi
+    if [ "$USE_SNI_SPOOF" = true ] && [[ $NETWORK_TUN == "--network=container:tun"* ]]; then
+      start_sni_spoof "$i" "$proxy"
     fi
   fi
 
@@ -1051,6 +1095,10 @@ if [[ "$1" == "--start" ]]; then
         fi
     fi
   done < $properties_file
+  # ================= SNI Spoof defaults =================
+  SNI_SPOOF_DECOY=${SNI_SPOOF_DECOY:-www.hcaptcha.com}
+  SNI_SPOOF_FOOLING=${SNI_SPOOF_FOOLING:-md5sig}
+
   # ================= Container Restart Policy =================
   if [[ -z "$CONTAINER_RESTART_POLICY" ]]; then
     CONTAINER_RESTART_POLICY="always"
