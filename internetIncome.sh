@@ -54,6 +54,7 @@ if [ -r /sys/kernel/security/apparmor/profiles ] &&
   APPARMOR_PARAM="--security-opt apparmor=docker-tun"
 fi
 traffmonetizer_data_folder="traffmonetizerdata"
+idlepay_data_folder="idlepaydata"
 proxyrack_file="proxyrack.txt"
 cloudflare_file="cloudflared"
 dns_resolver_file="resolv.conf"
@@ -62,7 +63,7 @@ ur_data_proxies_file="$urnetwork_data_folder/data/.urnetwork/proxy"
 required_files=($banner_file $properties_file $restart_file $generate_device_ids_file)
 files_to_be_removed=($dns_resolver_file $cloudflare_file $container_names_file $subnets_file $networks_file $mysterium_file $uprock_file)
 folders_to_be_removed=($earnapp_data_folder $dns_resolver_file)
-back_up_folders=($bitping_data_folder $urnetwork_data_folder $traffmonetizer_data_folder $mysterium_data_folder)
+back_up_folders=($bitping_data_folder $urnetwork_data_folder $traffmonetizer_data_folder $mysterium_data_folder $idlepay_data_folder)
 back_up_files=($proxyrack_file $earnapp_file)
 restricted_ports=(1 7 9 11 13 15 17 19 20 21 22 23 25 37 42 43 53 69 77 79 87 95 101 102 103 104 109 110 111 113 115 117 119 123 135 137 139 143 161 179 389 427 465 512 513 514 515 526 530 531 532 540 548 554 556 563 587 601 636 993 995 1719 1720 1723 2049 3659 4045 5060 5061 6000 6566 6665 6666 6667 6668 6669 6697 10080)
 container_pulled=false
@@ -525,53 +526,21 @@ start_containers() {
     fi
   fi
   
-  # Starting AntGain container
-  if [[ $ANTGAIN_API_KEY ]]; then
-    echo -e "${GREEN}Starting AntGain container..${NOCOLOUR}"
+
+
+  # Starting IdlePay container
+  if [[ $IDLEPAY_KEY ]]; then
     if [ "$container_pulled" = false ]; then
-      sudo docker pull --platform=linux/amd64 pinors/antgain-cli:latest
+      sudo docker pull ghcr.io/idlepay/idlepay:latest
     fi
-    if CONTAINER_ID=$(sudo docker run -d --platform=linux/amd64 --name antgain$UNIQUE_ID$i $NETWORK_TUN $LOGS_PARAM $DNS_VOLUME $APPARMOR_PARAM --restart always -e ANTGAIN_API_KEY=$ANTGAIN_API_KEY pinors/antgain-cli:latest run); then
-      echo "$CONTAINER_ID" | tee -a $containers_file
-      echo "antgain$UNIQUE_ID$i" | tee -a $container_names_file
-    else
-      echo -e "${RED}Failed to start container for AntGain. Exiting..${NOCOLOUR}"
-      exit 1
-    fi
+    mkdir -p $PWD/$idlepay_data_folder/data$i
+    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e IDLEPAY_KEY=$IDLEPAY_KEY -v $PWD/$idlepay_data_folder/data$i:/etc/idlepay ghcr.io/idlepay/idlepay:latest)
+    execute_docker_command "IdlePay" "idlepay$UNIQUE_ID$i" "${docker_parameters[@]}"
   else
     if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}AntGain API is not configured. Ignoring AntGain..${NOCOLOUR}"
+      echo -e "${RED}IdlePay Key is not configured. Ignoring IdlePay..${NOCOLOUR}"
     fi
   fi
-
-
-  # Starting PacketSDK container
-  if [[ $PACKET_SDK_APP_KEY ]]; then
-    if [ "$container_pulled" = false ]; then
-      sudo docker pull techroy23/docker-packetsdk:latest
-    fi
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN techroy23/docker-packetsdk:latest -e APPKEY=$PACKET_SDK_APP_KEY)
-    execute_docker_command "PacketSDK" "packetsdk$UNIQUE_ID$i" "${docker_parameters[@]}"
-  else
-    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}PacketSDK API is not configured. Ignoring PacketSDK..${NOCOLOUR}"
-    fi
-  fi
-
-
-    # Starting CastarSDK container
-  if [[ $CASTAR_SDK_KEY ]]; then
-    if [ "$container_pulled" = false ]; then
-      sudo docker pull techroy23/docker-castarsdk:latest
-    fi
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e APPKEY=$CASTAR_SDK_KEY techroy23/docker-castarsdk:latest)
-    execute_docker_command "CastarSDK" "castarsdk$UNIQUE_ID$i" "${docker_parameters[@]}"
-  else
-    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}CastarSDK is not configured. Ignoring CastarSDK..${NOCOLOUR}"
-    fi
-  fi
-
 
   # Starting Traffmonetizer container
   if [[ $TRAFFMONETIZER_TOKEN ]]; then
@@ -807,18 +776,6 @@ start_containers() {
     fi
   fi
 
-  # Starting WizardGain container
-  if [[ $WIZARD_GAIN_EMAIL ]]; then
-    if [ "$container_pulled" = false ]; then
-      sudo docker pull wizardgain/worker:latest
-    fi
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e EMAIL=$WIZARD_GAIN_EMAIL wizardgain/worker:latest)
-    execute_docker_command "WizardGain" "wizardgain$UNIQUE_ID$i" "${docker_parameters[@]}"
-  else
-    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}WizardGain Email is not configured. Ignoring WizardGain..${NOCOLOUR}"
-    fi
-  fi
 
   # Starting PacketStream container
   if [[ $PACKETSTREAM_CID ]]; then
