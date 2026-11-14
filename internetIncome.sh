@@ -55,13 +55,14 @@ if [ -r /sys/kernel/security/apparmor/profiles ] &&
 fi
 traffmonetizer_data_folder="traffmonetizerdata"
 idlepay_data_folder="idlepaydata"
+idlepay_proxies_file="idlepay_proxies.txt"
 proxyrack_file="proxyrack.txt"
 cloudflare_file="cloudflared"
 dns_resolver_file="resolv.conf"
 ur_proxies_file="ur_proxies.txt"
 ur_data_proxies_file="$urnetwork_data_folder/data/.urnetwork/proxy"
 required_files=($banner_file $properties_file $restart_file $generate_device_ids_file)
-files_to_be_removed=($dns_resolver_file $cloudflare_file $container_names_file $subnets_file $networks_file $mysterium_file $uprock_file)
+files_to_be_removed=($dns_resolver_file $cloudflare_file $container_names_file $subnets_file $networks_file $mysterium_file $uprock_file $idlepay_proxies_file)
 folders_to_be_removed=($earnapp_data_folder $dns_resolver_file)
 back_up_folders=($bitping_data_folder $urnetwork_data_folder $traffmonetizer_data_folder $mysterium_data_folder $idlepay_data_folder)
 back_up_files=($proxyrack_file $earnapp_file)
@@ -290,6 +291,36 @@ start_containers() {
 
   if [[ $CPU ]]; then
     CPU_PARAM="--cpus=$CPU"
+  fi
+
+  # Starting IdlePay container (single container, shares proxies.txt natively)
+  if [[ "$container_pulled" = false && ( -n "$IDLEPAY_KEY" || -f "$PWD/$idlepay_data_folder/data/config.json" ) ]]; then
+    idlepay_direct=off
+    idlepay_args=()
+    idlepay_has_proxies=false
+    [ "$USE_DIRECT_CONNECTION" = true ] && idlepay_direct=on
+    if [ "$USE_PROXIES" = true ] && [ -f "$proxies_file" ]; then
+      grep -E '^[[:space:]]*(socks5|socks5h|http|https)://' "$proxies_file" > "$idlepay_proxies_file"
+      if [ -s "$idlepay_proxies_file" ]; then
+        idlepay_has_proxies=true
+        idlepay_args+=(-v "$PWD/$idlepay_proxies_file:/proxies.txt:ro")
+      else
+        rm -f "$idlepay_proxies_file"
+      fi
+    fi
+    if [[ "$idlepay_direct" == off && "$idlepay_has_proxies" == false ]]; then
+      echo -e "${RED}IdlePay has nothing to share (needs USE_DIRECT_CONNECTION or socks5/http proxies). Ignoring IdlePay..${NOCOLOUR}"
+    else
+      [[ $IDLEPAY_KEY ]] && idlepay_args+=(-e IDLEPAY_KEY="$IDLEPAY_KEY")
+      sudo docker pull ghcr.io/idlepay/idlepay:latest
+      mkdir -p "$PWD/$idlepay_data_folder/data"
+      docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM --hostname "$DEVICE_NAME" -e IDLEPAY_DIRECT=$idlepay_direct -v "$PWD/$idlepay_data_folder/data:/etc/idlepay" "${idlepay_args[@]}" ghcr.io/idlepay/idlepay:latest)
+      execute_docker_command "IdlePay" "idlepay$UNIQUE_ID" "${docker_parameters[@]}"
+    fi
+  else
+    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
+      echo -e "${RED}IdlePay enrollment key is not configured. Ignoring IdlePay..${NOCOLOUR}"
+    fi
   fi
 
   if [[ $i && $proxy ]]; then
@@ -527,20 +558,6 @@ start_containers() {
   fi
   
 
-
-  # Starting IdlePay container
-  if [[ $IDLEPAY_KEY ]]; then
-    if [ "$container_pulled" = false ]; then
-      sudo docker pull ghcr.io/idlepay/idlepay:latest
-    fi
-    mkdir -p $PWD/$idlepay_data_folder/data$i
-    docker_parameters=($LOGS_PARAM $DNS_VOLUME $MAX_MEMORY_PARAM $MEMORY_RESERVATION_PARAM $MEMORY_SWAP_PARAM $CPU_PARAM $NETWORK_TUN -e IDLEPAY_KEY=$IDLEPAY_KEY -v $PWD/$idlepay_data_folder/data$i:/etc/idlepay ghcr.io/idlepay/idlepay:latest)
-    execute_docker_command "IdlePay" "idlepay$UNIQUE_ID$i" "${docker_parameters[@]}"
-  else
-    if [[ "$container_pulled" == false && "$ENABLE_LOGS" == true ]]; then
-      echo -e "${RED}IdlePay Key is not configured. Ignoring IdlePay..${NOCOLOUR}"
-    fi
-  fi
 
   # Starting Traffmonetizer container
   if [[ $TRAFFMONETIZER_TOKEN ]]; then
