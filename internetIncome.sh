@@ -323,7 +323,12 @@ start_containers() {
     fi
   fi
 
-  if [[ $i && $proxy ]]; then
+  local need_tun=false
+  local app_var
+  for app_var in MYSTERIUM UPROCK BITPING_EMAIL REPOCKET_API TRAFFMONETIZER_TOKEN UR_AUTH_TOKEN EARN_FM_API PROXYRACK_API PROXYBASE_ACCOUNT_ID IPROYALS_EMAIL WIPTER_EMAIL HONEYGAIN_EMAIL PACKETSTREAM_CID PROXYLITE_USER_ID EARNAPP; do
+    [[ -n "${!app_var}" && "${!app_var}" != false ]] && need_tun=true
+  done
+  if [[ $i && $proxy && $need_tun == true ]]; then
     NETWORK_TUN="--network=container:tun$UNIQUE_ID$i"
 
     if [ "$MYSTERIUM" = true ]; then
